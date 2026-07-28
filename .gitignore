@@ -17,6 +17,10 @@ packages/ai/src/providers/.model-generation-*/
 
 # Editor files
 .vscode/
+!.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 .zed/
 .idea/
 .claude/
