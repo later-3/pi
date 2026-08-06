@@ -44,6 +44,7 @@ describe("AgentSessionRuntime characterization", () => {
 		const tempDir =
 			options?.cwd ?? join(tmpdir(), `pi-runtime-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
+		const sessionDir = join(tempDir, ".pi-test-sessions");
 
 		const faux = registerFauxProvider({
 			models: [
@@ -107,7 +108,7 @@ describe("AgentSessionRuntime characterization", () => {
 		const runtime = await createAgentSessionRuntime(createRuntime, {
 			cwd: tempDir,
 			agentDir: tempDir,
-			sessionManager: SessionManager.create(tempDir),
+			sessionManager: SessionManager.create(tempDir, sessionDir),
 		});
 		await runtime.session.bindExtensions({});
 
@@ -119,8 +120,16 @@ describe("AgentSessionRuntime characterization", () => {
 			}
 		});
 
-		return { runtime, faux, tempDir };
+		return { runtime, faux, tempDir, sessionDir };
 	}
+
+	it("stores persisted test sessions inside the test temp directory", async () => {
+		const { runtime, sessionDir } = await createRuntimeForTest(() => {});
+		await runtime.session.prompt("hello");
+
+		expect(runtime.session.sessionManager.getSessionDir()).toBe(sessionDir);
+		expect(runtime.session.sessionFile?.startsWith(`${sessionDir}/`)).toBe(true);
+	});
 
 	it("persists message_end assistant replacements to the session manager", async () => {
 		const { runtime } = await createRuntimeForTest((pi: ExtensionAPI) => {
@@ -260,7 +269,7 @@ describe("AgentSessionRuntime characterization", () => {
 	it("honors session_before_switch cancellation for new and resume", async () => {
 		const events: RecordedSessionEvent[] = [];
 		let cancelReason: "new" | "resume" | undefined;
-		const { runtime } = await createRuntimeForTest((pi: ExtensionAPI) => {
+		const { runtime, tempDir, sessionDir } = await createRuntimeForTest((pi: ExtensionAPI) => {
 			pi.on("session_before_switch", (event) => {
 				events.push(event);
 				if (event.reason === cancelReason) {
@@ -281,9 +290,9 @@ describe("AgentSessionRuntime characterization", () => {
 		expect(runtime.session.sessionFile).toBe(originalSessionFile);
 
 		events.length = 0;
-		const otherDir = join(tmpdir(), `pi-runtime-other-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const otherDir = join(tempDir, "other");
 		mkdirSync(otherDir, { recursive: true });
-		const otherSession = SessionManager.create(otherDir);
+		const otherSession = SessionManager.create(otherDir, sessionDir);
 		otherSession.appendMessage({ role: "user", content: [{ type: "text", text: "other" }], timestamp: Date.now() });
 		const otherSessionFile = otherSession.getSessionFile();
 		cancelReason = "resume";
@@ -516,7 +525,7 @@ describe("AgentSessionRuntime characterization", () => {
 		const secondDir = join(tmpdir(), `pi-runtime-cwd-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(firstDir, { recursive: true });
 		mkdirSync(secondDir, { recursive: true });
-		const { runtime, faux, tempDir } = await createRuntimeForTest(() => {}, { cwd: firstDir });
+		const { runtime, faux, tempDir, sessionDir } = await createRuntimeForTest(() => {}, { cwd: firstDir });
 		const otherAuthStorage = AuthStorage.inMemory();
 		await otherAuthStorage.modify(faux.getModel().provider, async () => ({ type: "api_key", key: "faux-key" }));
 		const otherRuntimeOptions = {
@@ -569,10 +578,13 @@ describe("AgentSessionRuntime characterization", () => {
 		const otherRuntime = await createAgentSessionRuntime(createOtherRuntime, {
 			cwd: secondDir,
 			agentDir: tempDir,
-			sessionManager: SessionManager.create(secondDir),
+			sessionManager: SessionManager.create(secondDir, sessionDir),
 		});
 		cleanups.push(async () => {
 			await otherRuntime.dispose();
+			if (existsSync(secondDir)) {
+				rmSync(secondDir, { recursive: true, force: true });
+			}
 		});
 		await otherRuntime.session.prompt("other");
 		const otherSessionFile = otherRuntime.session.sessionFile!;
@@ -584,7 +596,7 @@ describe("AgentSessionRuntime characterization", () => {
 	});
 
 	it("restores model and thinking state from the destination session", async () => {
-		const { runtime, faux, tempDir } = await createRuntimeForTest(() => {}, {
+		const { runtime, faux, tempDir, sessionDir } = await createRuntimeForTest(() => {}, {
 			bootstrapModel: false,
 			bootstrapThinkingLevel: false,
 		});
@@ -642,7 +654,7 @@ describe("AgentSessionRuntime characterization", () => {
 		const otherRuntime = await createAgentSessionRuntime(createOtherRuntime, {
 			cwd: otherDir,
 			agentDir: tempDir,
-			sessionManager: SessionManager.create(otherDir),
+			sessionManager: SessionManager.create(otherDir, sessionDir),
 		});
 		cleanups.push(async () => {
 			await otherRuntime.dispose();
