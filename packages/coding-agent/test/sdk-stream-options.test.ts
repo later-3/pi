@@ -11,7 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ProviderRequestGate } from "../src/core/sdk.ts";
-import { createAgentSession } from "../src/core/sdk.ts";
+import { CODING_AGENT_SDK_CAPABILITIES, createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -51,6 +51,13 @@ describe("createAgentSession stream options", () => {
 			headers: { "x-model": "model" },
 		};
 	}
+
+	it("publishes the managed embedding capabilities at runtime", () => {
+		expect(CODING_AGENT_SDK_CAPABILITIES).toEqual({
+			providerRequestGate: 1,
+			resumePendingTurn: 1,
+		});
+	});
 
 	function createDoneStream(api: Api) {
 		const stream = createAssistantMessageEventStream();

@@ -200,13 +200,14 @@ export {
 	AgentSessionRuntime,
 	type AgentSessionRuntimeDiagnostic,
 	type AgentSessionServices,
+	// Factory
+	CODING_AGENT_SDK_CAPABILITIES,
 	type CreateAgentSessionFromServicesOptions,
 	type CreateAgentSessionOptions,
 	type CreateAgentSessionResult,
 	type CreateAgentSessionRuntimeFactory,
 	type CreateAgentSessionRuntimeResult,
 	type CreateAgentSessionServicesOptions,
-	// Factory
 	createAgentSession,
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,

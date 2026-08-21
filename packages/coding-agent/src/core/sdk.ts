@@ -104,6 +104,12 @@ export interface CreateAgentSessionOptions {
 
 export type ProviderRequestGate = NonNullable<SimpleStreamOptions["onPayload"]>;
 
+/** Runtime-discoverable SDK seams for embedders that must fail closed when a managed fork is absent. */
+export const CODING_AGENT_SDK_CAPABILITIES = Object.freeze({
+	providerRequestGate: 1,
+	resumePendingTurn: 1,
+} as const);
+
 /** Result from createAgentSession */
 export interface CreateAgentSessionResult {
 	/** The created session */
