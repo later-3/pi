@@ -40,6 +40,37 @@ describe("AgentSession prompt characterization", () => {
 		expect(harness.getPendingResponseCount()).toBe(0);
 	});
 
+	it("resumes a restored pending user turn through the complete session lifecycle", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		harness.session.agent.state.messages = [
+			{
+				role: "user",
+				content: [{ type: "text", text: "restored request" }],
+				timestamp: Date.now(),
+			},
+		];
+		harness.setResponses([fauxAssistantMessage("resumed")]);
+
+		await harness.session.resumePendingTurn();
+
+		expect(harness.session.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+		expect(getMessageText(harness.session.messages[1]!)).toBe("resumed");
+		expect(harness.eventsOfType("agent_settled")).toHaveLength(1);
+		expect(harness.session.isIdle).toBe(true);
+	});
+
+	it("rejects resume when the restored transcript is already complete", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		harness.session.agent.state.messages = [fauxAssistantMessage("already complete")];
+
+		await expect(harness.session.resumePendingTurn()).rejects.toThrow(
+			"Cannot resume pending turn from message role: assistant",
+		);
+		expect(harness.getPendingResponseCount()).toBe(0);
+	});
+
 	it("handles a tool call turn and waits for the follow-up LLM response", async () => {
 		const toolRuns: string[] = [];
 		const echoTool: AgentTool = {

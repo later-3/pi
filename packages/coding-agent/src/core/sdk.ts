@@ -1,6 +1,12 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai/compat";
+import {
+	clampThinkingLevel,
+	type Message,
+	type Model,
+	type SimpleStreamOptions,
+	streamSimple,
+} from "@earendil-works/pi-ai/compat";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
@@ -84,7 +90,19 @@ export interface CreateAgentSessionOptions {
 	settingsManager?: SettingsManager;
 	/** Session start event metadata for extension runtime startup. */
 	sessionStartEvent?: SessionStartEvent;
+
+	/**
+	 * Optional fail-closed gate invoked after all `before_provider_request` extensions
+	 * have transformed the final provider payload and immediately before the provider
+	 * request is dispatched. Rejections propagate to the Agent run; unlike extension
+	 * event handlers, gate errors are never converted into best-effort diagnostics.
+	 *
+	 * Omit this option to preserve the standard AgentSession behavior.
+	 */
+	providerRequestGate?: ProviderRequestGate;
 }
+
+export type ProviderRequestGate = NonNullable<SimpleStreamOptions["onPayload"]>;
 
 /** Result from createAgentSession */
 export interface CreateAgentSessionResult {
@@ -331,12 +349,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				},
 			});
 		},
-		onPayload: async (payload, _model) => {
+		onPayload: async (payload, payloadModel) => {
 			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
-			}
-			return runner.emitBeforeProviderRequest(payload);
+			const transformedPayload = runner?.hasHandlers("before_provider_request")
+				? await runner.emitBeforeProviderRequest(payload)
+				: payload;
+			return options.providerRequestGate
+				? options.providerRequestGate(transformedPayload, payloadModel)
+				: transformedPayload;
 		},
 		onResponse: async (response, _model) => {
 			const runner = extensionRunnerRef.current;

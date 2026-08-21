@@ -1,5 +1,15 @@
 # Development Rules
 
+## Later Fork Integration
+
+This repository is the source of Chat's managed Pi fork. `origin` is
+`https://github.com/later-3/pi`; the official `earendil-works/pi` remote is
+read-only and named `upstream`. Chat integrates the maintained
+`codex/later-custom` branch during the current development stage. Reusable Pi
+changes belong in this repository's source and tests, not in a downstream patch
+against generated `dist` files. Keep Chat product identities, decisions,
+workflow state, and UI outside Pi.
+
 ## Conversational Style
 
 - Keep answers short and concise

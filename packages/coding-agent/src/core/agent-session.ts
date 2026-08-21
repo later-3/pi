@@ -1074,6 +1074,37 @@ export class AgentSession {
 		}
 	}
 
+	/**
+	 * Resume an interrupted turn whose restored transcript ends with a user or
+	 * tool-result message. This follows the same retry, compaction, queue,
+	 * pending-bash, settled, and idle lifecycle as a normal session prompt.
+	 */
+	async resumePendingTurn(): Promise<void> {
+		if (!this.isIdle) {
+			throw new Error("Agent is already processing. Wait for completion before resuming.");
+		}
+
+		const lastMessage = this.agent.state.messages[this.agent.state.messages.length - 1];
+		if (!lastMessage) {
+			throw new Error("Cannot resume pending turn: no messages in context");
+		}
+		if (lastMessage.role !== "user" && lastMessage.role !== "toolResult") {
+			throw new Error(`Cannot resume pending turn from message role: ${lastMessage.role}`);
+		}
+
+		this._isAgentRunActive = true;
+		try {
+			await this.agent.continue();
+			while (await this._handlePostAgentRun()) {
+				await this.agent.continue();
+			}
+		} finally {
+			this._systemPromptOverride = undefined;
+			this._flushPendingBashMessages();
+			await this._emitAgentSettled();
+		}
+	}
+
 	private async _handlePostAgentRun(): Promise<boolean> {
 		const msg = this._lastAssistantMessage;
 		this._lastAssistantMessage = undefined;
