@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
+import type { ProviderRequestGate } from "../src/core/sdk.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
@@ -79,6 +80,7 @@ describe("createAgentSession stream options", () => {
 		settings: Partial<Settings>,
 		requestOptions: SimpleStreamOptions = {},
 		extensionSource?: string,
+		providerRequestGate?: ProviderRequestGate,
 	): Promise<SimpleStreamOptions | undefined> {
 		const model = createModel(api);
 		const settingsManager = SettingsManager.inMemory(settings);
@@ -111,6 +113,7 @@ describe("createAgentSession stream options", () => {
 			modelRuntime,
 			settingsManager,
 			sessionManager,
+			providerRequestGate,
 		});
 
 		try {
@@ -120,6 +123,38 @@ describe("createAgentSession stream options", () => {
 		} finally {
 			session.dispose();
 			modelRegistry.unregisterProvider(model.provider);
+		}
+	}
+
+	async function runProviderRequestGate(
+		providerRequestGate: ProviderRequestGate,
+		payload: unknown,
+		extensionSource?: string,
+	): Promise<unknown> {
+		const model = createModel("openai-completions");
+		const settingsManager = SettingsManager.inMemory({});
+		if (extensionSource) {
+			const extensionsDir = join(agentDir, "extensions");
+			mkdirSync(extensionsDir, { recursive: true });
+			writeFileSync(join(extensionsDir, "payload.ts"), extensionSource);
+		}
+		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+		const modelRegistry = await createModelRegistry(authStorage, join(agentDir, "models.json"));
+		const modelRuntime = getModelRuntime(modelRegistry);
+		const { session } = await createAgentSession({
+			cwd,
+			agentDir,
+			model,
+			modelRuntime,
+			settingsManager,
+			sessionManager: SessionManager.inMemory(cwd),
+			providerRequestGate,
+		});
+
+		try {
+			return await session.agent.onPayload?.(payload, model);
+		} finally {
+			session.dispose();
 		}
 	}
 
@@ -193,5 +228,37 @@ describe("createAgentSession stream options", () => {
 			"x-hook": "provider:model:explicit",
 		});
 		expect(options).not.toHaveProperty("transformHeaders");
+	});
+
+	it("runs the fail-closed provider gate after extension payload transforms", async () => {
+		const seen: unknown[] = [];
+		const result = runProviderRequestGate(
+			async (payload) => {
+				seen.push(payload);
+				return { ...(payload as Record<string, unknown>), approved: true };
+			},
+			{ model: "test" },
+			`export default function (pi) {
+				pi.on("before_provider_request", (event) => ({ ...event.payload, extension: true }));
+			}`,
+		);
+
+		await expect(result).resolves.toEqual({
+			model: "test",
+			extension: true,
+			approved: true,
+		});
+		expect(seen).toEqual([{ model: "test", extension: true }]);
+	});
+
+	it("propagates provider gate rejection instead of sending the original payload", async () => {
+		const result = runProviderRequestGate(
+			async () => {
+				throw new Error("review rejected");
+			},
+			{ model: "test" },
+		);
+
+		await expect(result).rejects.toThrow("review rejected");
 	});
 });
