@@ -1830,7 +1830,7 @@ export class AgentSession {
 
 			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
 
-			const pathEntries = this.sessionManager.getBranch();
+			const pathEntries = this.sessionManager.getContextBranch();
 			const settings = this.settingsManager.getCompactionSettings();
 
 			const preparation = prepareCompaction(pathEntries, settings);
@@ -2097,7 +2097,7 @@ export class AgentSession {
 
 			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
 
-			const pathEntries = this.sessionManager.getBranch();
+			const pathEntries = this.sessionManager.getContextBranch();
 
 			const preparation = prepareCompaction(pathEntries, settings);
 			if (!preparation) {

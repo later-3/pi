@@ -100,12 +100,26 @@ export interface CreateAgentSessionOptions {
 	 * Omit this option to preserve the standard AgentSession behavior.
 	 */
 	providerRequestGate?: ProviderRequestGate;
+
+	/**
+	 * Optional final transform for the messages sent to the model.
+	 *
+	 * The transform runs after extension context handlers and does not change the
+	 * Agent transcript or Session persistence. Embedders can use it to add
+	 * current-run context that must not become part of conversation history.
+	 */
+	transformContext?: AgentContextTransform;
 }
 
 export type ProviderRequestGate = NonNullable<SimpleStreamOptions["onPayload"]>;
+export type AgentContextTransform = (
+	messages: AgentMessage[],
+	signal?: AbortSignal,
+) => AgentMessage[] | Promise<AgentMessage[]>;
 
 /** Runtime-discoverable SDK seams for embedders that must fail closed when a managed fork is absent. */
 export const CODING_AGENT_SDK_CAPABILITIES = Object.freeze({
+	contextTransform: 1,
 	providerRequestGate: 1,
 	resumePendingTurn: 1,
 } as const);
@@ -376,10 +390,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		sessionId: sessionManager.getSessionId(),
-		transformContext: async (messages) => {
+		transformContext: async (messages, signal) => {
 			const runner = extensionRunnerRef.current;
-			if (!runner) return messages;
-			return runner.emitContext(messages);
+			const extensionMessages = runner ? await runner.emitContext(messages) : messages;
+			return options.transformContext
+				? await options.transformContext(extensionMessages, signal)
+				: extensionMessages;
 		},
 		steeringMode: settingsManager.getSteeringMode(),
 		followUpMode: settingsManager.getFollowUpMode(),

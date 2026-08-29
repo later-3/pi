@@ -54,9 +54,39 @@ describe("createAgentSession stream options", () => {
 
 	it("publishes the managed embedding capabilities at runtime", () => {
 		expect(CODING_AGENT_SDK_CAPABILITIES).toEqual({
+			contextTransform: 1,
 			providerRequestGate: 1,
 			resumePendingTurn: 1,
 		});
+	});
+
+	it("applies an embedder context transform without changing Session messages", async () => {
+		const model = createModel("openai-completions");
+		const settingsManager = SettingsManager.inMemory({});
+		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+		await authStorage.modify(model.provider, async () => ({ type: "api_key", key: "test-api-key" }));
+		const modelRegistry = await createModelRegistry(authStorage, join(agentDir, "models.json"));
+		const modelRuntime = getModelRuntime(modelRegistry);
+		const { session } = await createAgentSession({
+			cwd,
+			agentDir,
+			model,
+			modelRuntime,
+			settingsManager,
+			sessionManager: SessionManager.inMemory(cwd),
+			transformContext: (messages) => [...messages, { role: "user", content: "transient context", timestamp: 2 }],
+		});
+
+		try {
+			const original = [{ role: "user" as const, content: "persisted", timestamp: 1 }];
+			session.messages.push(...original);
+			const transformed = await session.agent.transformContext?.(session.messages);
+			expect(transformed).toEqual([...original, { role: "user", content: "transient context", timestamp: 2 }]);
+			expect(session.messages).toEqual(original);
+		} finally {
+			session.dispose();
+			modelRegistry.unregisterProvider(model.provider);
+		}
 	});
 
 	function createDoneStream(api: Api) {

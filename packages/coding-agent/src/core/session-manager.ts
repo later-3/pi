@@ -198,12 +198,15 @@ export type ReadonlySessionManager = Pick<
 	| "getEntry"
 	| "getLabel"
 	| "getBranch"
+	| "getContextBranch"
 	| "buildContextEntries"
 	| "getHeader"
 	| "getEntries"
 	| "getTree"
 	| "getSessionName"
 >;
+
+export type SessionContextEntryFilter = (entry: SessionEntry) => boolean;
 
 function createSessionId(): string {
 	return uuidv7();
@@ -864,6 +867,7 @@ export class SessionManager {
 	private labelsById: Map<string, string> = new Map();
 	private labelTimestampsById: Map<string, string> = new Map();
 	private leafId: string | null = null;
+	private contextEntryFilter?: SessionContextEntryFilter;
 
 	private constructor(
 		cwd: string,
@@ -990,6 +994,13 @@ export class SessionManager {
 
 	isPersisted(): boolean {
 		return this.persist;
+	}
+
+	/** Write the current append-only state even when no assistant message exists yet. */
+	flush(): void {
+		if (!this.persist || !this.sessionFile || this.flushed) return;
+		this._rewriteFile();
+		this.flushed = true;
 	}
 
 	getCwd(): string {
@@ -1269,12 +1280,24 @@ export class SessionManager {
 		return path;
 	}
 
+	/** Return the active branch after applying the embedder's context filter. */
+	getContextBranch(fromId?: string): SessionEntry[] {
+		const branch = this.getBranch(fromId);
+		return this.contextEntryFilter ? branch.filter(this.contextEntryFilter) : branch;
+	}
+
+	/** Configure which persisted entries participate in model context and compaction. */
+	setContextEntryFilter(filter: SessionContextEntryFilter | undefined): void {
+		this.contextEntryFilter = filter;
+	}
+
 	/**
 	 * Build the active, compaction-aware entry list for context/rendering.
 	 * Uses tree traversal from current leaf.
 	 */
 	buildContextEntries(): SessionEntry[] {
-		return buildContextEntries(this.getEntries(), this.leafId, this.byId);
+		const entries = buildContextEntries(this.getEntries(), this.leafId, this.byId);
+		return this.contextEntryFilter ? entries.filter(this.contextEntryFilter) : entries;
 	}
 
 	/**
@@ -1282,7 +1305,13 @@ export class SessionManager {
 	 * Uses tree traversal from current leaf.
 	 */
 	buildSessionContext(): SessionContext {
-		return buildSessionContext(this.getEntries(), this.leafId, this.byId);
+		if (!this.contextEntryFilter) {
+			return buildSessionContext(this.getEntries(), this.leafId, this.byId);
+		}
+		const path = this.getBranch();
+		const { thinkingLevel, model } = getSessionContextSettings(path);
+		const messages = this.buildContextEntries().flatMap(sessionEntryToContextMessages);
+		return { messages, thinkingLevel, model };
 	}
 
 	/**
@@ -1567,6 +1596,18 @@ export class SessionManager {
 	/** Create an in-memory session (no file persistence) */
 	static inMemory(cwd: string = process.cwd(), options?: NewSessionOptions): SessionManager {
 		return new SessionManager(cwd, "", undefined, false, options);
+	}
+
+	/**
+	 * Copy the source Session's active branch into a detached in-memory Session.
+	 * Appends to the returned manager never modify the source Session.
+	 */
+	static forkInMemory(source: ReadonlySessionManager): SessionManager {
+		const manager = new SessionManager(source.getCwd(), "", undefined, false);
+		const header = manager.fileEntries[0];
+		manager.fileEntries = header === undefined ? [] : [header, ...structuredClone(source.getContextBranch())];
+		manager._buildIndex();
+		return manager;
 	}
 
 	/**

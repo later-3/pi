@@ -197,6 +197,7 @@ export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./co
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
 // SDK for programmatic usage
 export {
+	type AgentContextTransform,
 	AgentSessionRuntime,
 	type AgentSessionRuntimeDiagnostic,
 	type AgentSessionServices,
@@ -239,6 +240,7 @@ export {
 	type NewSessionOptions,
 	parseSessionEntries,
 	type SessionContext,
+	type SessionContextEntryFilter,
 	type SessionEntry,
 	type SessionEntryBase,
 	type SessionHeader,
