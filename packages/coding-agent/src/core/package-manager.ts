@@ -1320,7 +1320,14 @@ export class DefaultPackageManager implements PackageManager {
 				metadata.baseDir = resolved;
 				const resources = this.collectPackageResources(resolved, accumulator, filter, metadata);
 				if (!resources) {
-					this.addResource(accumulator.extensions, resolved, metadata, true);
+					const extensionEntries = collectAutoExtensionEntries(resolved);
+					if (extensionEntries.length === 0) {
+						this.addResource(accumulator.extensions, resolved, metadata, true);
+					} else {
+						for (const entry of extensionEntries) {
+							this.addResource(accumulator.extensions, entry, metadata, true);
+						}
+					}
 				}
 			}
 		} catch {

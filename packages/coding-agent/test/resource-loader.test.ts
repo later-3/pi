@@ -843,6 +843,73 @@ Content`,
 	});
 
 	describe("extension conflict detection", () => {
+		it("should discover extension entries from an additional directory", async () => {
+			const explicitExtDir = join(tempDir, "explicit-extensions");
+			mkdirSync(explicitExtDir, { recursive: true });
+			writeFileSync(
+				join(explicitExtDir, "first.ts"),
+				`export default function(pi) {
+	pi.registerCommand("first", {
+		description: "first command",
+		handler: async () => {},
+	});
+}`,
+			);
+			writeFileSync(
+				join(explicitExtDir, "second.ts"),
+				`export default function(pi) {
+	pi.registerCommand("second", {
+		description: "second command",
+		handler: async () => {},
+	});
+}`,
+			);
+
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				additionalExtensionPaths: [explicitExtDir],
+			});
+			await loader.reload();
+
+			const extensionsResult = loader.getExtensions();
+			expect(extensionsResult.errors).toEqual([]);
+			expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([
+				join(explicitExtDir, "first.ts"),
+				join(explicitExtDir, "second.ts"),
+			]);
+			expect(extensionsResult.extensions.every((extension) => extension.sourceInfo.scope === "temporary")).toBe(
+				true,
+			);
+		});
+
+		it("should retain project scope for an additional project extension directory", async () => {
+			const projectExtDir = join(tempDir, "chat-project-extensions");
+			mkdirSync(projectExtDir, { recursive: true });
+			writeFileSync(
+				join(projectExtDir, "project.ts"),
+				`export default function(pi) {
+	pi.registerCommand("project", {
+		description: "project command",
+		handler: async () => {},
+	});
+}`,
+			);
+
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				additionalProjectExtensionPaths: [projectExtDir],
+			});
+			await loader.reload();
+
+			const extensionsResult = loader.getExtensions();
+			expect(extensionsResult.errors).toEqual([]);
+			expect(extensionsResult.extensions).toHaveLength(1);
+			expect(extensionsResult.extensions[0]?.path).toBe(join(projectExtDir, "project.ts"));
+			expect(extensionsResult.extensions[0]?.sourceInfo.scope).toBe("project");
+		});
+
 		it("should detect tool conflicts between extensions", async () => {
 			// Create two extensions that register the same tool
 			const ext1Dir = join(agentDir, "extensions", "ext1");

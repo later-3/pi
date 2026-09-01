@@ -161,6 +161,7 @@ export interface DefaultResourceLoaderOptions {
 	settingsManager?: SettingsManager;
 	eventBus?: EventBus;
 	additionalExtensionPaths?: string[];
+	additionalProjectExtensionPaths?: string[];
 	additionalSkillPaths?: string[];
 	additionalPromptTemplatePaths?: string[];
 	additionalThemePaths?: string[];
@@ -199,6 +200,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private eventBus: EventBus;
 	private packageManager: DefaultPackageManager;
 	private additionalExtensionPaths: string[];
+	private additionalProjectExtensionPaths: string[];
 	private additionalSkillPaths: string[];
 	private additionalPromptTemplatePaths: string[];
 	private additionalThemePaths: string[];
@@ -261,6 +263,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			settingsManager: this.settingsManager,
 		});
 		this.additionalExtensionPaths = options.additionalExtensionPaths ?? [];
+		this.additionalProjectExtensionPaths = options.additionalProjectExtensionPaths ?? [];
 		this.additionalSkillPaths = options.additionalSkillPaths ?? [];
 		this.additionalPromptTemplatePaths = options.additionalPromptTemplatePaths ?? [];
 		this.additionalThemePaths = options.additionalThemePaths ?? [];
@@ -404,6 +407,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
 			temporary: true,
 		});
+		const projectExtensionPaths = await this.packageManager.resolveExtensionSources(
+			this.settingsManager.isProjectTrusted() ? this.additionalProjectExtensionPaths : [],
+			{ local: true },
+		);
 		// Kept on the instance so post-reload passes (extendResources) can still resolve package metadata.
 		this.resourceMetadataByPath = new Map();
 		const metadataByPath = this.resourceMetadataByPath;
@@ -444,16 +451,17 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 
 		const cliEnabledExtensions = getEnabledPaths(cliExtensionPaths.extensions);
+		const projectEnabledExtensions = getEnabledPaths(projectExtensionPaths.extensions);
 		const cliEnabledSkills = getEnabledPaths(cliExtensionPaths.skills);
 		const cliEnabledPrompts = getEnabledPaths(cliExtensionPaths.prompts);
 		const cliEnabledThemes = getEnabledPaths(cliExtensionPaths.themes);
 
 		const extensionPaths = this.noExtensions
-			? cliEnabledExtensions
-			: this.mergePaths(cliEnabledExtensions, enabledExtensions);
+			? this.mergePaths(cliEnabledExtensions, projectEnabledExtensions)
+			: this.mergePaths([...cliEnabledExtensions, ...projectEnabledExtensions], enabledExtensions);
 
 		const extensionsResult = await this.loadFinalExtensionSet(extensionPaths, preTrustExtensions);
-		for (const p of this.additionalExtensionPaths) {
+		for (const p of [...this.additionalExtensionPaths, ...this.additionalProjectExtensionPaths]) {
 			if (isLocalPath(p)) {
 				const resolved = this.resolveResourcePath(p);
 				if (!existsSync(resolved)) {
