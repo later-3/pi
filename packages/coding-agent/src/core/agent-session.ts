@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import type {
 	Agent,
+	AgentContext,
 	AgentEvent,
 	AgentMessage,
 	AgentState,
@@ -322,6 +323,8 @@ export class AgentSession {
 	private _followUpMessages: string[] = [];
 	/** Messages queued to be included with the next user prompt as context ("asides"). */
 	private _pendingNextTurnMessages: CustomMessage[] = [];
+	/** Context-only custom messages queued during a run, flushed once the current turn's tool results are in. */
+	private _pendingCustomMessages: CustomMessage[] = [];
 
 	// Compaction state
 	private _compactionAbortController: AbortController | undefined = undefined;
@@ -532,6 +535,25 @@ export class AgentSession {
 		};
 	}
 
+	private async _compactBeforeNextAssistantResponse(context: AgentContext): Promise<AgentContext> {
+		const model = this.model;
+		const settings = this.settingsManager.getCompactionSettings();
+
+		if (
+			!model ||
+			model.contextWindow <= 0 ||
+			!shouldCompact(estimateContextTokens(context.messages).tokens, model.contextWindow, settings)
+		) {
+			return context;
+		}
+
+		await this._runAutoCompaction("threshold", false);
+		return {
+			...context,
+			messages: this.agent.state.messages.slice(),
+		};
+	}
+
 	private _installAgentNextTurnRefresh(): void {
 		const previousPrepareNextTurnWithContext =
 			this.agent.prepareNextTurnWithContext ??
@@ -539,13 +561,14 @@ export class AgentSession {
 				? async (_turn: PrepareNextTurnContext, signal?: AbortSignal) => await this.agent.prepareNextTurn?.(signal)
 				: undefined);
 		this.agent.prepareNextTurnWithContext = async (turn, signal) => {
-			const previousSnapshot = await previousPrepareNextTurnWithContext?.(turn, signal);
-			const previousContext = previousSnapshot?.context ?? turn.context;
+			const context = await this._compactBeforeNextAssistantResponse(turn.context);
+			const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
+			const nextContext = previousSnapshot?.context ?? context;
 
 			return {
 				...previousSnapshot,
 				context: {
-					...previousContext,
+					...nextContext,
 					systemPrompt: this._systemPromptOverride ?? this._baseSystemPrompt,
 					tools: this.agent.state.tools.slice(),
 				},
@@ -677,6 +700,15 @@ export class AgentSession {
 					this._retryAttempt = 0;
 				}
 			}
+		}
+
+		// A turn ends after its assistant message and every tool result has been appended,
+		// so this is the first point in the run where a context-only custom message can be
+		// inserted without landing between a tool call and its result. Flushing after the
+		// extension and listener dispatch above also picks up messages that turn_end
+		// handlers queued.
+		if (event.type === "turn_end") {
+			this._flushPendingCustomMessages();
 		}
 	};
 
@@ -1070,6 +1102,7 @@ export class AgentSession {
 		} finally {
 			this._systemPromptOverride = undefined;
 			this._flushPendingBashMessages();
+			this._flushPendingCustomMessages();
 			await this._emitAgentSettled();
 		}
 	}
@@ -1210,8 +1243,9 @@ export class AgentSession {
 				return;
 			}
 
-			// Flush any pending bash messages before the new prompt
+			// Flush any pending bash and custom messages before the new prompt
 			this._flushPendingBashMessages();
+			this._flushPendingCustomMessages();
 
 			// Validate model
 			if (!this.model) {
@@ -1456,8 +1490,9 @@ export class AgentSession {
 	/**
 	 * Send a custom message to the session. Creates a CustomMessageEntry.
 	 *
-	 * Handles three cases:
+	 * Handles four cases:
 	 * - Streaming: queues message, processed when loop pulls from queue
+	 * - Streaming + triggerTurn false: appended to state/session once the current turn ends
 	 * - Not streaming + triggerTurn: appends to state/session, starts new turn
 	 * - Not streaming + no trigger: appends to state/session, no turn
 	 *
@@ -1488,16 +1523,40 @@ export class AgentSession {
 			}
 		} else if (options?.triggerTurn) {
 			await this._runAgentPrompt(appMessage);
+		} else if (this.isStreaming) {
+			// Appending now would put the message between an assistant tool call and its
+			// result, which providers that validate message order reject on replay. Defer
+			// to the end of the turn. Nothing is emitted yet: message events must not
+			// describe messages the session tree does not contain.
+			this._pendingCustomMessages.push(appMessage);
 		} else {
-			this.agent.state.messages.push(appMessage);
-			this.sessionManager.appendCustomMessageEntry(
-				message.customType,
-				message.content,
-				message.display,
-				message.details,
-			);
-			this._emit({ type: "message_start", message: appMessage });
-			this._emit({ type: "message_end", message: appMessage });
+			this._appendCustomMessage(appMessage);
+		}
+	}
+
+	private _appendCustomMessage(appMessage: CustomMessage): void {
+		this.agent.state.messages.push(appMessage);
+		this.sessionManager.appendCustomMessageEntry(
+			appMessage.customType,
+			appMessage.content,
+			appMessage.display,
+			appMessage.details,
+		);
+		this._emit({ type: "message_start", message: appMessage });
+		this._emit({ type: "message_end", message: appMessage });
+	}
+
+	/**
+	 * Append custom messages queued while the agent was running.
+	 * Called once the current turn's tool results are in agent state and session history.
+	 */
+	private _flushPendingCustomMessages(): void {
+		if (this._pendingCustomMessages.length === 0) return;
+
+		const pending = this._pendingCustomMessages;
+		this._pendingCustomMessages = [];
+		for (const appMessage of pending) {
+			this._appendCustomMessage(appMessage);
 		}
 	}
 
@@ -2021,8 +2080,9 @@ export class AgentSession {
 		// independent of the configured context size or any context-clamped provider request limit.
 		// A successful response over the configured window should compact but must not retry: the
 		// assistant answer already completed and agent.continue() cannot continue from an assistant.
+		const contextOverflow = sameModel && isContextOverflow(assistantMessage, contextWindow);
 		const recoverableLength = sameModel && isRecoverableLength(assistantMessage, this.model?.maxTokens ?? 0);
-		if (sameModel && (isContextOverflow(assistantMessage, contextWindow) || recoverableLength)) {
+		if (contextOverflow || recoverableLength) {
 			const willRetry = assistantMessage.stopReason !== "stop";
 
 			if (!willRetry) {
@@ -2030,14 +2090,16 @@ export class AgentSession {
 			}
 
 			if (this._overflowRecoveryAttempted) {
+				const errorMessage = contextOverflow
+					? "Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model."
+					: "Truncated response recovery failed after one compact-and-retry attempt.";
 				this._emit({
 					type: "compaction_end",
 					reason: "overflow",
 					result: undefined,
 					aborted: false,
 					willRetry: false,
-					errorMessage:
-						"Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model.",
+					errorMessage,
 				});
 				return false;
 			}
@@ -2061,17 +2123,20 @@ export class AgentSession {
 		if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
 			const messages = this.agent.state.messages;
 			const estimate = estimateContextTokens(messages);
-			if (estimate.lastUsageIndex === null) return false; // No usage data at all
-			// Verify the usage source is post-compaction. Kept pre-compaction messages
-			// have stale usage reflecting the old (larger) context and would falsely
-			// trigger compaction right after one just finished.
-			const usageMsg = messages[estimate.lastUsageIndex];
-			if (
-				compactionEntry &&
-				usageMsg.role === "assistant" &&
-				(usageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
-			) {
-				return false;
+			// Without provider usage, estimate.tokens is the pure message-size estimate.
+			// Only usage-backed estimates need the stale pre-compaction check.
+			if (estimate.lastUsageIndex !== null) {
+				// Verify the usage source is post-compaction. Kept pre-compaction messages
+				// have stale usage reflecting the old (larger) context and would falsely
+				// trigger compaction right after one just finished.
+				const usageMsg = messages[estimate.lastUsageIndex];
+				if (
+					compactionEntry &&
+					usageMsg.role === "assistant" &&
+					(usageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+				) {
+					return false;
+				}
 			}
 			contextTokens = estimate.tokens;
 		} else {

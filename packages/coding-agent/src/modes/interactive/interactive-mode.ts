@@ -58,6 +58,7 @@ import {
 } from "../../config.ts";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
+import type { AgentSessionRuntimeDiagnostic } from "../../core/agent-session-services.ts";
 import {
 	CACHE_TTL_MS,
 	type CacheMiss,
@@ -257,6 +258,12 @@ function hasDefaultModelProvider(providerId: string): providerId is keyof typeof
 	return providerId in defaultModelPerProvider;
 }
 
+function llamaCppPostLoginGuidance(actionLabel: string, loadedModelCount: number): string {
+	return loadedModelCount === 0
+		? `${actionLabel}. No llama.cpp models are loaded. Use /llama to load a model, then /model to select it.`
+		: `${actionLabel}. Use /model to select a loaded llama.cpp model, or /llama to manage models.`;
+}
+
 type LoginProviderCompletionOption = {
 	id: string;
 	name: string;
@@ -316,6 +323,8 @@ function formatLoginProviderCompletionDescription(provider: LoginProviderComplet
 export interface InteractiveModeOptions {
 	/** Providers that were migrated to auth.json (shows warning) */
 	migratedProviders?: string[];
+	/** Diagnostics collected before the interactive TUI was initialized. */
+	startupDiagnostics?: AgentSessionRuntimeDiagnostic[];
 	/** Warning message if session model couldn't be restored */
 	modelFallbackMessage?: string;
 	/** Cwd to trust after reload if it gained a .pi directory during this implicitly trusted session. */
@@ -1074,7 +1083,24 @@ export class InteractiveMode {
 		});
 
 		// Show startup warnings
-		const { migratedProviders, modelFallbackMessage, initialMessage, initialImages, initialMessages } = this.options;
+		const {
+			migratedProviders,
+			startupDiagnostics,
+			modelFallbackMessage,
+			initialMessage,
+			initialImages,
+			initialMessages,
+		} = this.options;
+
+		for (const diagnostic of startupDiagnostics ?? []) {
+			if (diagnostic.type === "error") {
+				this.showError(diagnostic.message);
+			} else if (diagnostic.type === "warning") {
+				this.showWarning(diagnostic.message);
+			} else {
+				this.showStatus(diagnostic.message);
+			}
+		}
 
 		if (migratedProviders && migratedProviders.length > 0) {
 			this.showWarning(`Migrated credentials to auth.json: ${migratedProviders.join(", ")}`);
@@ -2088,6 +2114,16 @@ export class InteractiveMode {
 		}
 	}
 
+	private showWorkingStatusIndicator(): void {
+		this.showStatusIndicator(
+			new WorkingStatusIndicator(
+				this.ui,
+				this.workingMessage ?? this.defaultWorkingMessage,
+				this.workingIndicatorOptions,
+			),
+		);
+	}
+
 	private setWorkingVisible(visible: boolean): void {
 		this.workingVisible = visible;
 		if (!visible) {
@@ -2096,13 +2132,7 @@ export class InteractiveMode {
 			return;
 		}
 		if (this.session.isStreaming && this.activeStatusIndicator?.kind !== "working") {
-			this.showStatusIndicator(
-				new WorkingStatusIndicator(
-					this.ui,
-					this.workingMessage ?? this.defaultWorkingMessage,
-					this.workingIndicatorOptions,
-				),
-			);
+			this.showWorkingStatusIndicator();
 		}
 		this.ui.requestRender();
 	}
@@ -3102,23 +3132,22 @@ export class InteractiveMode {
 		switch (event.type) {
 			case "agent_start":
 				this.pendingTools.clear();
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(true);
-				}
 				// Restore main escape handler if retry handler is still active
 				// (retry success event fires later, but we need main handler now)
 				if (this.retryEscapeHandler) {
 					this.defaultEditor.onEscape = this.retryEscapeHandler;
 					this.retryEscapeHandler = undefined;
 				}
+				break;
+
+			case "turn_start":
+				if (this.settingsManager.getShowTerminalProgress()) {
+					this.ui.terminal.setProgress(true);
+				}
 				if (this.workingVisible) {
-					this.showStatusIndicator(
-						new WorkingStatusIndicator(
-							this.ui,
-							this.workingMessage ?? this.defaultWorkingMessage,
-							this.workingIndicatorOptions,
-						),
-					);
+					if (this.activeStatusIndicator?.kind !== "working") {
+						this.showWorkingStatusIndicator();
+					}
 				} else {
 					this.clearStatusIndicator();
 				}
@@ -4091,21 +4120,20 @@ export class InteractiveMode {
 		this.showStatus(`Tool output: ${expanded ? "expanded" : "collapsed"}`);
 	}
 
+	/** Update rendered assistant messages without rebuilding live tool components. */
+	private updateThinkingBlockVisibility(): void {
+		for (const child of this.chatContainer.children) {
+			if (child instanceof AssistantMessageComponent) {
+				child.setHideThinkingBlock(this.hideThinkingBlock);
+			}
+		}
+		this.ui.requestRender();
+	}
+
 	private toggleThinkingBlockVisibility(): void {
 		this.hideThinkingBlock = !this.hideThinkingBlock;
 		this.settingsManager.setHideThinkingBlock(this.hideThinkingBlock);
-
-		// Rebuild chat from session messages
-		this.chatContainer.clear();
-		this.rebuildChatFromMessages();
-
-		// If streaming, re-add the streaming component with updated visibility and re-render
-		if (this.streamingComponent && this.streamingMessage) {
-			this.streamingComponent.setHideThinkingBlock(this.hideThinkingBlock);
-			this.streamingComponent.updateContent(this.streamingMessage);
-			this.chatContainer.addChild(this.streamingComponent);
-		}
-
+		this.updateThinkingBlockVisibility();
 		this.showStatus(`Thinking blocks: ${this.hideThinkingBlock ? "hidden" : "visible"}`);
 	}
 
@@ -4516,13 +4544,7 @@ export class InteractiveMode {
 					onHideThinkingBlockChange: (hidden) => {
 						this.hideThinkingBlock = hidden;
 						this.settingsManager.setHideThinkingBlock(hidden);
-						for (const child of this.chatContainer.children) {
-							if (child instanceof AssistantMessageComponent) {
-								child.setHideThinkingBlock(hidden);
-							}
-						}
-						this.chatContainer.clear();
-						this.rebuildChatFromMessages();
+						this.updateThinkingBlockVisibility();
 					},
 					onMermaidRenderingModeChange: (mode) => {
 						this.settingsManager.setMermaidRenderingMode(mode);
@@ -5471,7 +5493,10 @@ export class InteractiveMode {
 		if (isUnknownModel(previousModel)) {
 			const availableModels = this.session.modelRuntime.getAvailableSnapshot();
 			const providerModels = availableModels.filter((model) => model.provider === providerId);
-			if (!hasDefaultModelProvider(providerId)) {
+			// Matches LLAMA_PROVIDER_ID from extensions/llama/provider.ts; kept inline to avoid coupling interactive mode to the built-in extension.
+			if (providerId === "llama.cpp") {
+				selectionError = llamaCppPostLoginGuidance(actionLabel, providerModels.length);
+			} else if (!hasDefaultModelProvider(providerId)) {
 				selectionError = `${actionLabel}, but no default model is configured for provider "${providerId}". Use /model to select a model.`;
 			} else if (providerModels.length === 0) {
 				selectionError = `${actionLabel}, but no models are available for that provider. Use /model to select a model.`;

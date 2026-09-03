@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed narrow padded text, wrapped Markdown table styles, oversized main-screen renders, Windows right-click paste, and fullscreen path/word selection ([#8028](https://github.com/earendil-works/pi/issues/8028), [#8186](https://github.com/earendil-works/pi/issues/8186), [#8252](https://github.com/earendil-works/pi/issues/8252), [#8335](https://github.com/earendil-works/pi/issues/8335), [#8676](https://github.com/earendil-works/pi/issues/8676)).
+
 ## [0.84.2] - 2026-08-14
 
 ### Added

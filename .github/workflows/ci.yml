@@ -39,21 +39,21 @@ jobs:
         run: npm ci --ignore-scripts
 
       # 稳定分支必须验证当前提交，而不是把实时模型目录的新增协议变成随机构建输入。
-      # 该工件与Chat Managed Source使用同一Pi v0.84.2来源和Digest。
+      # 该工件与Chat Managed Source使用同一Pi v0.84.4来源和Digest。
       - name: Restore pinned model catalog
         env:
-          PI_MODEL_DATA_URL: https://github.com/earendil-works/pi/releases/download/v0.84.2/pi-0.84.2-source.tar.gz
-          PI_MODEL_DATA_SHA256: 96a9efad258fa6fa89f661bbf830c356dd3baf6cd06c6543ce4e8253c143460e
+          PI_MODEL_DATA_URL: https://github.com/earendil-works/pi/releases/download/v0.84.4/pi-0.84.4-source.tar.gz
+          PI_MODEL_DATA_SHA256: ca3958559b60f87ee44c84d94df8c3ee0b7eda575370402abb2d0ad9155cde4a
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/pi-0.84.2-source.tar.gz"
+          archive="$RUNNER_TEMP/pi-0.84.4-source.tar.gz"
           extract_root="$RUNNER_TEMP/pi-model-data"
           curl --fail --location --retry 3 --output "$archive" "$PI_MODEL_DATA_URL"
           printf '%s  %s\n' "$PI_MODEL_DATA_SHA256" "$archive" | sha256sum --check -
           mkdir -p "$extract_root"
           tar -xzf "$archive" -C "$extract_root"
           test ! -e packages/ai/src/providers/data
-          cp -R "$extract_root/pi-0.84.2/packages/ai/src/providers/data" packages/ai/src/providers/data
+          cp -R "$extract_root/pi-0.84.4/packages/ai/src/providers/data" packages/ai/src/providers/data
 
       - name: Build
         run: npm run build:offline

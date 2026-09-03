@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking Changes
+
+- Changed `prepareNextTurn` and `prepareNextTurnWithContext` to run only when the agent loop will start another assistant turn, after stop and queued-message checks ([#6879](https://github.com/earendil-works/pi/issues/6879)).
+
+### Fixed
+
+- Fixed `NodeExecutionEnv` aborts on Windows when `taskkill.exe` is unavailable, recursive harness skill discovery, and single-object harness edit inputs ([#6596](https://github.com/earendil-works/pi/issues/6596), [#7805](https://github.com/earendil-works/pi/issues/7805), [#7835](https://github.com/earendil-works/pi/issues/7835)).
+
 ## [0.84.2] - 2026-08-14
 
 ### Fixed
