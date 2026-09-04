@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Added `deepseek-v4-pro-0813` to the Qwen Token Plan Individual catalog ([#8194](https://github.com/earendil-works/pi/issues/8194)).
+- Fixed generated xAI model data to route every built-in model through the Responses API expected by the provider.
 - Fixed OpenAI-compatible Chat Completions reasoning replay to preserve and resend assistant-level `reasoning_details` (`reasoning.text`, `reasoning.summary`, and `reasoning.encrypted`) in order ([#7994](https://github.com/earendil-works/pi/issues/7994)).
 - Fixed GitHub Copilot login policy rate limits, Kimi cached-token accounting, Google thinking-level maps, Azure Responses tool choice, and Amazon Bedrock reasoning/header replay ([#7850](https://github.com/earendil-works/pi/issues/7850), [#8075](https://github.com/earendil-works/pi/issues/8075), [#8135](https://github.com/earendil-works/pi/issues/8135), [#8234](https://github.com/earendil-works/pi/issues/8234), [#8314](https://github.com/earendil-works/pi/issues/8314)).
 - Fixed built-in Z.AI, Xiaomi, Baseten, DeepSeek, Cloudflare AI Gateway, OpenRouter, and Mistral catalog or stream compatibility ([#8181](https://github.com/earendil-works/pi/issues/8181), [#8187](https://github.com/earendil-works/pi/issues/8187), [#8336](https://github.com/earendil-works/pi/issues/8336), [#8387](https://github.com/earendil-works/pi/issues/8387), [#8454](https://github.com/earendil-works/pi/issues/8454)).
