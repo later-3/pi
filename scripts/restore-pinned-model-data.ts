@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +28,20 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
-async function downloadPinnedArchive(path: string): Promise<void> {
+function formatError(error: unknown): string {
+	if (!(error instanceof Error)) return String(error);
+	const cause = "cause" in error ? error.cause : undefined;
+	return cause instanceof Error ? `${error.message}: ${cause.message}` : error.message;
+}
+
+async function verifyArchiveDigest(path: string): Promise<void> {
+	const digest = createHash("sha256").update(await readFile(path)).digest("hex");
+	if (digest !== PINNED_MODEL_DATA_SHA256) {
+		throw new Error(`model data archive SHA256 mismatch: expected ${PINNED_MODEL_DATA_SHA256}, received ${digest}`);
+	}
+}
+
+async function downloadWithFetch(path: string): Promise<void> {
 	let lastError: unknown;
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
 		try {
@@ -38,10 +51,6 @@ async function downloadPinnedArchive(path: string): Promise<void> {
 			});
 			if (!response.ok) throw new Error(`download failed with HTTP ${response.status}`);
 			const bytes = new Uint8Array(await response.arrayBuffer());
-			const digest = createHash("sha256").update(bytes).digest("hex");
-			if (digest !== PINNED_MODEL_DATA_SHA256) {
-				throw new Error(`model data archive SHA256 mismatch: expected ${PINNED_MODEL_DATA_SHA256}, received ${digest}`);
-			}
 			await writeFile(path, bytes, { mode: 0o600 });
 			return;
 		} catch (error) {
@@ -50,6 +59,58 @@ async function downloadPinnedArchive(path: string): Promise<void> {
 		}
 	}
 	throw lastError;
+}
+
+function downloadWithCurl(path: string): void {
+	const result = spawnSync(
+		"curl",
+		[
+			"--fail",
+			"--location",
+			"--retry",
+			"3",
+			"--retry-all-errors",
+			"--connect-timeout",
+			"20",
+			"--max-time",
+			"180",
+			"--silent",
+			"--show-error",
+			"--output",
+			path,
+			PINNED_MODEL_DATA_URL,
+		],
+		{ encoding: "utf8", maxBuffer: 1024 * 1024 },
+	);
+	if (result.error) throw result.error;
+	if (result.status !== 0) throw new Error(result.stderr.trim() || `curl exited with status ${String(result.status)}`);
+}
+
+async function downloadPinnedArchive(path: string): Promise<void> {
+	const hasProxy = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"].some(
+		(name) => process.env[name],
+	);
+	const methods = hasProxy
+		? ([
+				["curl", async () => downloadWithCurl(path)],
+				["fetch", async () => downloadWithFetch(path)],
+			] as const)
+		: ([
+				["fetch", async () => downloadWithFetch(path)],
+				["curl", async () => downloadWithCurl(path)],
+			] as const);
+	const failures: string[] = [];
+	for (const [name, download] of methods) {
+		try {
+			await download();
+			await verifyArchiveDigest(path);
+			return;
+		} catch (error) {
+			failures.push(`${name}: ${formatError(error)}`);
+			await rm(path, { force: true });
+		}
+	}
+	throw new Error(`failed to download pinned model data: ${failures.join("; ")}`);
 }
 
 function extractArchive(archivePath: string, extractionRoot: string): void {
