@@ -190,20 +190,30 @@ export function convertResponsesMessages<TApi extends Api>(
 					content: [{ type: "input_text", text: sanitizeSurrogates(msg.content) }],
 				});
 			} else {
-				const content: ResponseInputContent[] = msg.content.map((item): ResponseInputContent => {
-					if (item.type === "text") {
+				// Drop empty text blocks: they carry no information, and some providers
+				// reject them outright (e.g. Kimi: "text content is empty").
+				const content: ResponseInputContent[] = msg.content
+					.filter((item) => item.type !== "text" || item.text.trim().length > 0)
+					.map((item): ResponseInputContent => {
+						if (item.type === "text") {
+							return {
+								type: "input_text",
+								text: sanitizeSurrogates(item.text),
+							} satisfies ResponseInputText;
+						}
 						return {
-							type: "input_text",
-							text: sanitizeSurrogates(item.text),
-						} satisfies ResponseInputText;
-					}
-					return {
-						type: "input_image",
-						detail: "auto",
-						image_url: `data:${item.mimeType};base64,${item.data}`,
-					} satisfies ResponseInputImage;
-				});
+							type: "input_image",
+							detail: "auto",
+							image_url: `data:${item.mimeType};base64,${item.data}`,
+						} satisfies ResponseInputImage;
+					});
 				if (content.length === 0) continue;
+				// Some providers (e.g. Kimi) reject user messages without any text
+				// part, even when images are present — same placeholder rule as
+				// image-only tool results.
+				if (!content.some((part) => part.type === "input_text")) {
+					content.unshift({ type: "input_text", text: "(see attached image)" });
+				}
 				messages.push({
 					role: "user",
 					content,

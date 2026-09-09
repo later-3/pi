@@ -9,6 +9,7 @@
 ### Fixed
 
 - Fixed `NodeExecutionEnv` aborts on Windows when `taskkill.exe` is unavailable, recursive harness skill discovery, and single-object harness edit inputs ([#6596](https://github.com/earendil-works/pi/issues/6596), [#7805](https://github.com/earendil-works/pi/issues/7805), [#7835](https://github.com/earendil-works/pi/issues/7835)).
+- Fixed image-only prompts carrying an empty text block, which providers like Kimi reject with "text content is empty".
 
 ## [0.84.2] - 2026-08-14
 

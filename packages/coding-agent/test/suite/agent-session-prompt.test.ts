@@ -534,4 +534,17 @@ describe("AgentSession prompt characterization", () => {
 			`No API key found for ${harness.getModel().provider}.`,
 		);
 	});
+
+	it("omits the empty text block for image-only prompts", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("I see it")]);
+
+		const png = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
+		await harness.session.prompt("", { images: [png] });
+
+		const userMessage = harness.session.messages.find((message) => message.role === "user");
+		expect(userMessage?.content).toEqual([png]);
+		expect(getMessageText(harness.session.messages[1]!)).toBe("I see it");
+	});
 });

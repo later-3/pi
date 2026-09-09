@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed user-message conversion in OpenAI Completions and OpenAI Responses APIs sending empty text content parts, which providers like Kimi reject with "text content is empty".
 - Added `deepseek-v4-pro-0813` to the Qwen Token Plan Individual catalog ([#8194](https://github.com/earendil-works/pi/issues/8194)).
 - Fixed generated xAI model data to route every built-in model through the Responses API expected by the provider.
 - Fixed OpenAI-compatible Chat Completions reasoning replay to preserve and resend assistant-level `reasoning_details` (`reasoning.text`, `reasoning.summary`, and `reasoning.encrypted`) in order ([#7994](https://github.com/earendil-works/pi/issues/7994)).

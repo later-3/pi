@@ -1277,8 +1277,13 @@ export class AgentSession {
 			// Build messages array (custom message if any, then user message)
 			messages = [];
 
-			// Add user message
-			const userContent: (TextContent | ImageContent)[] = [{ type: "text", text: expandedText }];
+			// Add user message. Image-only prompts must not carry an empty text
+			// block: some providers reject empty text parts outright
+			// (e.g. Kimi: "text content is empty").
+			const userContent: (TextContent | ImageContent)[] = [];
+			if (expandedText !== "" || !currentImages || currentImages.length === 0) {
+				userContent.push({ type: "text", text: expandedText });
+			}
 			if (currentImages) {
 				userContent.push(...currentImages);
 			}
@@ -1444,7 +1449,11 @@ export class AgentSession {
 	private async _queueSteer(text: string, images?: ImageContent[]): Promise<void> {
 		this._steeringMessages.push(text);
 		this._emitQueueUpdate();
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
+		// Same empty-text rule as prompt(): image-only queues omit the text block.
+		const content: (TextContent | ImageContent)[] = [];
+		if (text !== "" || !images || images.length === 0) {
+			content.push({ type: "text", text });
+		}
 		if (images) {
 			content.push(...images);
 		}
@@ -1461,7 +1470,11 @@ export class AgentSession {
 	private async _queueFollowUp(text: string, images?: ImageContent[]): Promise<void> {
 		this._followUpMessages.push(text);
 		this._emitQueueUpdate();
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
+		// Same empty-text rule as prompt(): image-only queues omit the text block.
+		const content: (TextContent | ImageContent)[] = [];
+		if (text !== "" || !images || images.length === 0) {
+			content.push({ type: "text", text });
+		}
 		if (images) {
 			content.push(...images);
 		}

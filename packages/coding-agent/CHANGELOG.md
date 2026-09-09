@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed image-only prompts (`prompt("", { images })`, steer, followUp) carrying an empty text block, which providers like Kimi reject with "text content is empty".
 - Fixed compaction running too late after large tool results, accepting truncated or tool-calling summaries, and skipping threshold compaction when providers omit usage ([#6879](https://github.com/earendil-works/pi/issues/6879), [#7048](https://github.com/earendil-works/pi/issues/7048), [#8328](https://github.com/earendil-works/pi/issues/8328)).
 - Fixed resumed unterminated JSONL sessions, custom messages being inserted between tool calls and results, and incorrect branch-summary source leaves ([#8345](https://github.com/earendil-works/pi/issues/8345), [#8537](https://github.com/earendil-works/pi/issues/8537)).
 - Fixed nested Markdown skill discovery, UTF-8 BOM configuration loading, managed-file permission preservation, invalid settings diagnostics, and extension factory state leaking after failed loads ([#7779](https://github.com/earendil-works/pi/issues/7779), [#7805](https://github.com/earendil-works/pi/issues/7805), [#7829](https://github.com/earendil-works/pi/issues/7829), [#8337](https://github.com/earendil-works/pi/issues/8337), [#8424](https://github.com/earendil-works/pi/issues/8424)).

@@ -808,3 +808,49 @@ describe("Agent", () => {
 		expect(receivedSessionId).toBe("session-def");
 	});
 });
+
+describe("image-only prompts", () => {
+	const png = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
+
+	function captureContextMessages(captured: unknown[][]): StreamFn {
+		return (_model, context) => {
+			captured.push([...context.messages]);
+			const stream = new MockAssistantStream();
+			queueMicrotask(() => {
+				stream.push({ type: "done", reason: "stop", message: createAssistantMessage("ok") });
+			});
+			return stream;
+		};
+	}
+
+	it("omits the empty text block so providers that reject it can accept image input", async () => {
+		const captured: unknown[][] = [];
+		const agent = new Agent({ streamFn: captureContextMessages(captured) });
+
+		await agent.prompt("", [png]);
+
+		const userMessage = captured[0]?.at(-1) as { role: string; content: unknown[] } | undefined;
+		expect(userMessage?.role).toBe("user");
+		expect(userMessage?.content).toEqual([png]);
+	});
+
+	it("keeps the empty text block when no images are attached", async () => {
+		const captured: unknown[][] = [];
+		const agent = new Agent({ streamFn: captureContextMessages(captured) });
+
+		await agent.prompt("");
+
+		const userMessage = captured[0]?.at(-1) as { role: string; content: unknown[] } | undefined;
+		expect(userMessage?.content).toEqual([{ type: "text", text: "" }]);
+	});
+
+	it("still leads with the text block when both text and images are present", async () => {
+		const captured: unknown[][] = [];
+		const agent = new Agent({ streamFn: captureContextMessages(captured) });
+
+		await agent.prompt("describe this", [png]);
+
+		const userMessage = captured[0]?.at(-1) as { role: string; content: unknown[] } | undefined;
+		expect(userMessage?.content).toEqual([{ type: "text", text: "describe this" }, png]);
+	});
+});

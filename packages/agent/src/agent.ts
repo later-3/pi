@@ -399,7 +399,12 @@ export class Agent {
 			return [input];
 		}
 
-		const content: Array<TextContent | ImageContent> = [{ type: "text", text: input }];
+		// Image-only prompts must not carry an empty text block: some providers
+		// reject empty text parts outright (e.g. Kimi: "text content is empty").
+		const content: Array<TextContent | ImageContent> = [];
+		if (input !== "" || !images || images.length === 0) {
+			content.push({ type: "text", text: input });
+		}
 		if (images && images.length > 0) {
 			content.push(...images);
 		}
