@@ -19,7 +19,7 @@ interface OpenAICompletionsCachePayload {
 }
 
 interface OpenAIResponsesCachePayload extends OpenAICompletionsCachePayload {
-	prompt_cache_options?: { mode: "explicit" };
+	prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" };
 }
 
 function stopAfterPayload<TPayload>(capture: (payload: TPayload) => void): (payload: unknown) => never {
@@ -398,31 +398,38 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			expect(capturedPayload?.prompt_cache_options).toBeUndefined();
 		});
 
-		it("should set prompt_cache_retention when cacheRetention is long", async () => {
-			const model = getModel("openai", "gpt-4o-mini");
-			let capturedPayload: any = null;
+		it.each([
+			[false, "24h", undefined],
+			[true, undefined, { ttl: "30m" }],
+		] as const)(
+			"should use the supported long cache field (explicit mode: %s)",
+			async (explicitMode, retention, cacheOptions) => {
+				const base = getModel("openai", "gpt-4o-mini");
+				const model = { ...base, compat: { ...base.compat, supportsExplicitPromptCacheMode: explicitMode } };
+				let capturedPayload: OpenAIResponsesCachePayload | undefined;
 
-			try {
-				const s = streamOpenAIResponses(model, context, {
-					apiKey: "fake-key",
-					cacheRetention: "long",
-					sessionId: "session-2",
-					onPayload: stopAfterPayload((payload) => {
-						capturedPayload = payload;
-					}),
-				});
+				try {
+					const s = streamOpenAIResponses(model, context, {
+						apiKey: "fake-key",
+						cacheRetention: "long",
+						sessionId: "session-2",
+						onPayload: stopAfterPayload<OpenAIResponsesCachePayload>((payload) => {
+							capturedPayload = payload;
+						}),
+					});
 
-				for await (const event of s) {
-					if (event.type === "error") break;
+					for await (const event of s) {
+						if (event.type === "error") break;
+					}
+				} catch {
+					// Expected to fail
 				}
-			} catch {
-				// Expected to fail
-			}
 
-			expect(capturedPayload).not.toBeNull();
-			expect(capturedPayload.prompt_cache_key).toBe("session-2");
-			expect(capturedPayload.prompt_cache_retention).toBe("24h");
-		});
+				expect(capturedPayload?.prompt_cache_key).toBe("session-2");
+				expect(capturedPayload?.prompt_cache_retention).toBe(retention);
+				expect(capturedPayload?.prompt_cache_options).toEqual(cacheOptions);
+			},
+		);
 	});
 
 	describe("OpenAI Completions Provider", () => {

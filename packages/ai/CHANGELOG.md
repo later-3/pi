@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Capped assistant and summarization retry backoff at 60 seconds by default, configurable with `maxAgentDelayMs` (upstream `c37b0e03b`).
+- Fixed long Responses cache retention for explicit-cache models to use `prompt_cache_options.ttl: "30m"` instead of unsupported `prompt_cache_retention: "24h"` (selected fix from upstream `17de82d7b`).
 - Fixed user-message conversion in OpenAI Completions and OpenAI Responses APIs sending empty text content parts, which providers like Kimi reject with "text content is empty".
 - Added `deepseek-v4-pro-0813` to the Qwen Token Plan Individual catalog ([#8194](https://github.com/earendil-works/pi/issues/8194)).
 - Fixed generated xAI model data to route every built-in model through the Responses API expected by the provider.

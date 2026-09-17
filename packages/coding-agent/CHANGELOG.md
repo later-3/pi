@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Session abort now cancels compaction and branch summarization and waits for idle (upstream `bea67d90d`).
+- Applied input extension handlers and preserved RPC input sources for direct steering/follow-up messages (upstream `faa9863cb`).
+- Capped agent and summary retry backoff with `retry.maxAgentDelayMs`, defaulting to 60000 ms (upstream `c37b0e03b`).
 - Fixed image-only prompts (`prompt("", { images })`, steer, followUp) carrying an empty text block, which providers like Kimi reject with "text content is empty".
 - Fixed compaction running too late after large tool results, accepting truncated or tool-calling summaries, and skipping threshold compaction when providers omit usage ([#6879](https://github.com/earendil-works/pi/issues/6879), [#7048](https://github.com/earendil-works/pi/issues/7048), [#8328](https://github.com/earendil-works/pi/issues/8328)).
 - Fixed resumed unterminated JSONL sessions, custom messages being inserted between tool calls and results, and incorrect branch-summary source leaves ([#8345](https://github.com/earendil-works/pi/issues/8345), [#8537](https://github.com/earendil-works/pi/issues/8537)).
