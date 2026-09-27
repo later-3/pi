@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exported read-only `getSessionStats()` and `getSessionContextUsage()` helpers shared with AgentSession, without constructing an Agent or loading extensions.
+
 ### Fixed
 
+- Applied the SDK provider request gate and provider payload/response hooks to compaction and branch-summary requests, including summary retries, through the shared stream boundary.
+- Reported compaction cancellation from its abort signal when a transport wraps the abort in a generic error, including cancellation during summary retry backoff.
 - Session abort now cancels compaction and branch summarization and waits for idle (upstream `bea67d90d`).
 - Applied input extension handlers and preserved RPC input sources for direct steering/follow-up messages (upstream `faa9863cb`).
 - Capped agent and summary retry backoff with `retry.maxAgentDelayMs`, defaulting to 60000 ms (upstream `c37b0e03b`).

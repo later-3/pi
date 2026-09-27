@@ -236,6 +236,10 @@ function hasResolvedCloudflareAuth(options: StreamOptions | undefined): boolean 
 function getBuiltinProviderForModel(model: Model<Api>) {
 	if (getApiProvider(model.api) !== builtinApiProviderInstances.get(model.api)) return undefined;
 	const provider = compatModels.getProvider(model.provider);
+	// The gateway supports custom Workers AI /compat models even when its
+	// pinned discovery catalog contains only Anthropic and Responses entries.
+	// Keep endpoint materialization and gateway auth on the provider path.
+	if (model.provider === "cloudflare-ai-gateway" && model.api === "openai-completions") return provider;
 	return provider?.getModels().some((candidate) => candidate.api === model.api) ? provider : undefined;
 }
 

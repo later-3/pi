@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Preserved provider auth and endpoint resolution for custom Cloudflare Gateway Chat Completions models absent from its pinned discovery catalog.
+- Aligned provider tests with the pinned model catalog: use an explicit Workers AI gateway fixture and the catalogued Copilot Responses model without changing recorded handoff history.
 - Capped assistant and summarization retry backoff at 60 seconds by default, configurable with `maxAgentDelayMs` (upstream `c37b0e03b`).
 - Fixed long Responses cache retention for explicit-cache models to use `prompt_cache_options.ttl: "30m"` instead of unsupported `prompt_cache_retention: "24h"` (selected fix from upstream `17de82d7b`).
 - Fixed user-message conversion in OpenAI Completions and OpenAI Responses APIs sending empty text content parts, which providers like Kimi reject with "text content is empty".

@@ -178,6 +178,14 @@ describe("createAgentSession stream options", () => {
 		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
 		const modelRegistry = await createModelRegistry(authStorage, join(agentDir, "models.json"));
 		const modelRuntime = getModelRuntime(modelRegistry);
+		let streamOptions: SimpleStreamOptions | undefined;
+		modelRegistry.registerProvider(model.provider, {
+			api: model.api,
+			streamSimple: (_model, _context, options) => {
+				streamOptions = options;
+				return createDoneStream(model.api);
+			},
+		});
 		const { session } = await createAgentSession({
 			cwd,
 			agentDir,
@@ -189,9 +197,12 @@ describe("createAgentSession stream options", () => {
 		});
 
 		try {
-			return await session.agent.onPayload?.(payload, model);
+			const stream = await session.agent.streamFunction(model, { messages: [] }, { apiKey: "local-test" });
+			await stream.result();
+			return await streamOptions?.onPayload?.(payload, model);
 		} finally {
 			session.dispose();
+			modelRegistry.unregisterProvider(model.provider);
 		}
 	}
 

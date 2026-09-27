@@ -94,7 +94,8 @@ export interface CreateAgentSessionOptions {
 	/**
 	 * Optional fail-closed gate invoked after all `before_provider_request` extensions
 	 * have transformed the final provider payload and immediately before the provider
-	 * request is dispatched. Rejections propagate to the Agent run; unlike extension
+	 * request is dispatched, including compaction and branch-summary requests and
+	 * their retries. Rejections propagate to the caller; unlike extension
 	 * event handlers, gate errors are never converted into best-effort diagnostics.
 	 *
 	 * Omit this option to preserve the standard AgentSession behavior.
@@ -331,6 +332,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	};
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const providerRequestGate = options.providerRequestGate;
 
 	agent = new Agent({
 		initialState: {
@@ -352,6 +354,29 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const headerRunner = extensionRunnerRef.current;
 			return modelRuntime.streamSimple(model, context, {
 				...options,
+				// Summarization calls streamFunction directly instead of the Agent loop.
+				// Keep admission at this shared boundary, after all payload transforms.
+				onPayload: async (payload, payloadModel) => {
+					const callerPayload = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
+					const runner = extensionRunnerRef.current;
+					const transformedPayload = runner?.hasHandlers("before_provider_request")
+						? await runner.emitBeforeProviderRequest(callerPayload)
+						: callerPayload;
+					return providerRequestGate
+						? ((await providerRequestGate(transformedPayload, payloadModel)) ?? transformedPayload)
+						: transformedPayload;
+				},
+				onResponse: async (response, responseModel) => {
+					await options?.onResponse?.(response, responseModel);
+					const runner = extensionRunnerRef.current;
+					if (runner?.hasHandlers("after_provider_response")) {
+						await runner.emit({
+							type: "after_provider_response",
+							status: response.status,
+							headers: response.headers,
+						});
+					}
+				},
 				timeoutMs,
 				websocketConnectTimeoutMs,
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
@@ -367,26 +392,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						? headerRunner.emitBeforeProviderHeaders(headers ?? {})
 						: (headers ?? {});
 				},
-			});
-		},
-		onPayload: async (payload, payloadModel) => {
-			const runner = extensionRunnerRef.current;
-			const transformedPayload = runner?.hasHandlers("before_provider_request")
-				? await runner.emitBeforeProviderRequest(payload)
-				: payload;
-			return options.providerRequestGate
-				? options.providerRequestGate(transformedPayload, payloadModel)
-				: transformedPayload;
-		},
-		onResponse: async (response, _model) => {
-			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("after_provider_response")) {
-				return;
-			}
-			await runner.emit({
-				type: "after_provider_response",
-				status: response.status,
-				headers: response.headers,
 			});
 		},
 		sessionId: sessionManager.getSessionId(),

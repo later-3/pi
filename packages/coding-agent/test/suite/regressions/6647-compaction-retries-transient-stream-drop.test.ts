@@ -189,4 +189,24 @@ describe("#6647 compaction retries transient summarization failures", () => {
 		const compactionEnd = harness.eventsOfType("compaction_end").at(-1);
 		expect(compactionEnd).toMatchObject({ aborted: true });
 	});
+
+	it("classifies an auto-compaction exception after abort as cancellation", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		seedCompactableSession(harness);
+		harness.settingsManager.applyOverrides({
+			compaction: { enabled: true, reserveTokens: 1000 },
+			retry: { enabled: true, maxRetries: 2, baseDelayMs: 30_000 },
+		});
+		harness.session.agent.state.model = { ...harness.getModel(), contextWindow: 1100 };
+		harness.session.agent.streamFunction = async () => {
+			harness.session.abortCompaction();
+			throw new Error("Turn prefix summarization failed: This operation was aborted");
+		};
+		// Native pre-prompt threshold compaction runs before the next user message.
+		await harness.session.prompt("continue");
+		expect(harness.eventsOfType("compaction_end")[0]).toMatchObject({ aborted: true, willRetry: false });
+		expect(harness.eventsOfType("compaction_end")[0].errorMessage).toBeUndefined();
+		expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
+	});
 });

@@ -252,6 +252,7 @@ export {
 	sessionEntryToContextMessages,
 	type ThinkingLevelChangeEntry,
 } from "./core/session-manager.ts";
+export { getSessionContextUsage, getSessionStats } from "./core/session-stats.ts";
 export {
 	type CompactionSettings,
 	type DefaultProjectTrust,

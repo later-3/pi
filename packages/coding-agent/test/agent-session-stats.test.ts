@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { getSessionContextUsage, getSessionStats } from "../src/core/session-stats.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { getUsageCostBreakdown } from "../src/core/usage-totals.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
@@ -98,6 +99,23 @@ function syncAgentMessages(session: AgentSession, sessionManager: SessionManager
 }
 
 describe("AgentSession.getSessionStats", () => {
+	it("read-only statistics equal AgentSession across branches without changing the native entries", async () => {
+		const { session, sessionManager } = await createSession();
+		try {
+			const root = sessionManager.appendMessage(createUserMessage("first", 1));
+			sessionManager.appendMessage(createAssistantMessage("old branch", 100, 2));
+			sessionManager.branch(root);
+			sessionManager.appendMessage(createAssistantMessage("new branch", 50, 3));
+			syncAgentMessages(session, sessionManager);
+			const before = JSON.stringify(sessionManager.getEntries());
+			const usage = getSessionContextUsage(sessionManager, session.agent.state.messages, model.contextWindow);
+			expect(getSessionStats(sessionManager, usage)).toEqual(session.getSessionStats());
+			expect(getSessionStats(sessionManager).tokens.total).toBe(150);
+			expect(JSON.stringify(sessionManager.getEntries())).toBe(before);
+		} finally {
+			session.dispose();
+		}
+	});
 	it("exposes the current context usage alongside token totals", async () => {
 		const { session, sessionManager } = await createSession();
 
