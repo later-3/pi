@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Awaited asynchronous steering and follow-up admission in concurrent-session regressions before checking pending message content.
 - Applied the SDK provider request gate and provider payload/response hooks to compaction and branch-summary requests, including summary retries, through the shared stream boundary.
 - Reported compaction cancellation from its abort signal when a transport wraps the abort in a generic error, including cancellation during summary retry backoff.
 - Session abort now cancels compaction and branch summarization and waits for idle (upstream `bea67d90d`).

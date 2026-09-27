@@ -157,8 +157,10 @@ describe("AgentSession concurrent prompt guard", () => {
 		await new Promise((resolve) => setTimeout(resolve, 10));
 
 		// steer should work while streaming
-		expect(() => session.steer("Steering message")).not.toThrow();
+		expect(session.isStreaming).toBe(true);
+		await expect(session.steer("Steering message")).resolves.toBeUndefined();
 		expect(session.pendingMessageCount).toBe(1);
+		expect(session.getSteeringMessages()).toEqual(["Steering message"]);
 
 		// Cleanup
 		await session.abort();
@@ -173,8 +175,10 @@ describe("AgentSession concurrent prompt guard", () => {
 		await new Promise((resolve) => setTimeout(resolve, 10));
 
 		// followUp should work while streaming
-		expect(() => session.followUp("Follow-up message")).not.toThrow();
+		expect(session.isStreaming).toBe(true);
+		await expect(session.followUp("Follow-up message")).resolves.toBeUndefined();
 		expect(session.pendingMessageCount).toBe(1);
+		expect(session.getFollowUpMessages()).toEqual(["Follow-up message"]);
 
 		// Cleanup
 		await session.abort();
