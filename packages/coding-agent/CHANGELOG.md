@@ -4,6 +4,7 @@
 
 ### Added
 
+- Exported standalone `exportSessionToHtml()` and `exportFromFile()` SDK helpers, reusing native HTML export without starting the CLI or an AgentSession; bundled hosts can supply native template and theme asset paths.
 - Exported read-only `getSessionStats()` and `getSessionContextUsage()` helpers shared with AgentSession, without constructing an Agent or loading extensions.
 
 ### Fixed

@@ -1158,6 +1158,23 @@ RPC mode is preferred when:
 - You want process isolation
 - You're building a language-agnostic client
 
+## Standalone HTML export
+
+Export an existing session without starting an AgentSession, loading extensions, or selecting a model. These helpers use the same native HTML renderer as the CLI and retain the complete session tree and current leaf.
+
+```typescript
+import { SessionManager, exportSessionToHtml, exportFromFile } from "@earendil-works/pi-coding-agent";
+
+const manager = SessionManager.open("/path/to/session.jsonl");
+await exportSessionToHtml(manager, undefined, { outputPath: "/path/to/history.html" });
+// Or open the session as part of the export:
+await exportFromFile("/path/to/session.jsonl", { outputPath: "/path/to/history.html" });
+```
+
+The output is a standalone HTML file. Export does not append to or change the source session. `exportSessionToHtml` also accepts optional AgentState and a custom tool renderer when those are already available.
+
+Bundlers that relocate package files can pass `templateDir` (the native HTML/CSS/JS templates and vendor directory) and `themeFile` (a native theme JSON file). The explicit theme file takes precedence over `themeName`. These paths are local to this export; they do not alter the global theme or package location. Ship the assets from the same Pi revision as the exporter.
+
 ## Exports
 
 The main entry point exports:

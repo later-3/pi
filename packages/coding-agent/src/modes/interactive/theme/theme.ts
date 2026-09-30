@@ -1061,10 +1061,13 @@ function ansi256ToHex(index: number): string {
  * Get resolved theme colors as CSS-compatible hex strings.
  * Used by HTML export to generate CSS custom properties.
  */
-export function getResolvedThemeColors(themeName?: string): Record<string, string> {
+export function getResolvedThemeColors(themeName?: string, themeFile?: string): Record<string, string> {
 	const name = themeName ?? currentThemeName ?? getDefaultTheme();
-	const isLight = name === "light";
-	const themeJson = loadThemeJson(name);
+	const themeJson =
+		themeFile === undefined
+			? loadThemeJson(name)
+			: parseThemeJsonContent(themeFile, fs.readFileSync(themeFile, "utf-8"));
+	const isLight = (themeFile === undefined ? name : themeJson.name) === "light";
 	const resolved = resolveThemeColors(withThemeColorFallbacks(themeJson.colors), themeJson.vars);
 
 	// Default text color for empty values (terminal uses default fg color)
@@ -1096,14 +1099,20 @@ export function isLightTheme(themeName?: string): boolean {
  * Get explicit export colors from theme JSON, if specified.
  * Returns undefined for each color that isn't explicitly set.
  */
-export function getThemeExportColors(themeName?: string): {
+export function getThemeExportColors(
+	themeName?: string,
+	themeFile?: string,
+): {
 	pageBg?: string;
 	cardBg?: string;
 	infoBg?: string;
 } {
 	const name = themeName ?? currentThemeName ?? getDefaultTheme();
 	try {
-		const themeJson = loadThemeJson(name);
+		const themeJson =
+			themeFile === undefined
+				? loadThemeJson(name)
+				: parseThemeJsonContent(themeFile, fs.readFileSync(themeFile, "utf-8"));
 		const exportSection = themeJson.export;
 		if (!exportSection) return {};
 
