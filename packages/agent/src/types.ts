@@ -338,6 +338,15 @@ export interface AgentState {
 	model: Model<any>;
 	/** Requested reasoning level for future turns. */
 	thinkingLevel: ThinkingLevel;
+	/** Sampling temperature for future turns; omitted values keep provider defaults. */
+	temperature?: number;
+	/**
+	 * Arbitrary sampling parameters merged into provider request bodies (e.g. `top_p`).
+	 * Only applied by OpenAI-compatible adapters; other APIs ignore it.
+	 */
+	samplingParams?: Record<string, unknown>;
+	/** Output token cap for future turns; omitted values keep the model default. */
+	maxTokens?: number;
 	/** Available tools. Assigning a new array copies the top-level array. */
 	set tools(tools: AgentTool<any>[]);
 	get tools(): AgentTool<any>[];

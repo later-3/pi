@@ -75,6 +75,9 @@ function createMutableAgentState(
 		systemPrompt: initialState?.systemPrompt ?? "",
 		model: initialState?.model ?? DEFAULT_MODEL,
 		thinkingLevel: initialState?.thinkingLevel ?? "off",
+		temperature: initialState?.temperature,
+		samplingParams: initialState?.samplingParams,
+		maxTokens: initialState?.maxTokens,
 		get tools() {
 			return tools;
 		},
@@ -453,6 +456,9 @@ export class Agent {
 		return {
 			model: this._state.model,
 			reasoning: this._state.thinkingLevel === "off" ? undefined : this._state.thinkingLevel,
+			temperature: this._state.temperature,
+			samplingParams: this._state.samplingParams,
+			maxTokens: this._state.maxTokens,
 			sessionId: this.sessionId,
 			onPayload: this.onPayload,
 			onResponse: this.onResponse,

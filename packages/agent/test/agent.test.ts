@@ -807,6 +807,52 @@ describe("Agent", () => {
 		await agent.prompt("hello again");
 		expect(receivedSessionId).toBe("session-def");
 	});
+
+	it("forwards generation options from state to streamFunction", async () => {
+		const capturedOptions: Parameters<StreamFn>[2][] = [];
+		const agent = new Agent({
+			streamFn: (_model, _context, options) => {
+				capturedOptions.push(options);
+				const stream = new MockAssistantStream();
+				queueMicrotask(() => {
+					const message = createAssistantMessage("ok");
+					stream.push({ type: "done", reason: "stop", message });
+				});
+				return stream;
+			},
+		});
+		agent.state.temperature = 0.4;
+		agent.state.samplingParams = { top_p: 0.9 };
+		agent.state.maxTokens = 2048;
+
+		await agent.prompt("hello");
+
+		expect(capturedOptions[0]?.temperature).toBe(0.4);
+		expect(capturedOptions[0]?.samplingParams).toEqual({ top_p: 0.9 });
+		expect(capturedOptions[0]?.maxTokens).toBe(2048);
+	});
+
+	it("accepts generation options via initial state", async () => {
+		const capturedOptions: Parameters<StreamFn>[2][] = [];
+		const agent = new Agent({
+			initialState: { temperature: 0.2, samplingParams: { top_p: 0.5 }, maxTokens: 1024 },
+			streamFn: (_model, _context, options) => {
+				capturedOptions.push(options);
+				const stream = new MockAssistantStream();
+				queueMicrotask(() => {
+					const message = createAssistantMessage("ok");
+					stream.push({ type: "done", reason: "stop", message });
+				});
+				return stream;
+			},
+		});
+
+		await agent.prompt("hello");
+
+		expect(capturedOptions[0]?.temperature).toBe(0.2);
+		expect(capturedOptions[0]?.samplingParams).toEqual({ top_p: 0.5 });
+		expect(capturedOptions[0]?.maxTokens).toBe(1024);
+	});
 });
 
 describe("image-only prompts", () => {
